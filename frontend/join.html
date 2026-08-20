@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Join Assignment</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="page">
+  <a class="back" href="index.html">&larr; Back</a>
+  <h1>Join the Assignment</h1>
+  <p class="subtitle">Enter the code from your instructor and your name.</p>
+  <div class="card">
+    <label for="code">Assignment code</label>
+    <input type="text" id="code" placeholder="e.g. 7F3K2Q" maxlength="6">
+    <label for="studentName">Your name</label>
+    <input type="text" id="studentName" placeholder="e.g. Jordan Lee">
+    <div id="err" class="error" style="display:none"></div>
+    <button id="joinBtn">Join</button>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script>
+document.getElementById("joinBtn").addEventListener("click", async () => {
+  const code = document.getElementById("code").value.trim();
+  const name = document.getElementById("studentName").value.trim();
+  const err = document.getElementById("err");
+  err.style.display = "none";
+  if (!code || !name) {
+    err.textContent = "Please enter both the assignment code and your name.";
+    err.style.display = "block";
+    return;
+  }
+  try {
+    const result = await api.post("/api/student/join", { session_code: code, student_name: name });
+    localStorage.setItem("student_id", result.student_id);
+    localStorage.setItem("student_name", result.student_name);
+    window.location.href = "student.html";
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = "block";
+  }
+});
+</script>
+</body>
+</html>
