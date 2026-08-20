@@ -60,9 +60,7 @@ Open **http://localhost:8000**.
 
 ## Deploying to Render
 
-`render.yaml` in the project root defines the service: a free Python web
-service plus a small persistent disk (mounted at `/var/data`, via the
-`DATA_DIR` env var) so student submissions survive restarts/redeploys.
+`render.yaml` in the project root defines a free Python web service.
 
 1. Push this repo to GitHub.
 2. In Render: **New +** → **Blueprint** → select the repo. Render reads
@@ -71,6 +69,16 @@ service plus a small persistent disk (mounted at `/var/data`, via the
    env var (from `backend/.env` — never commit that file).
 4. Deploy. Render gives you a stable `https://*.onrender.com` URL.
 
-Note: the free plan spins down after ~15 minutes idle and takes ~30s to
+**Data durability, read before using with real students:** this is running
+on Render's free plan with no persistent disk (disks aren't available on
+free tier), so `backend/data.db` lives on the container's ephemeral
+filesystem. It survives ordinary idle spin-down/wake cycles, but **any
+redeploy (including pushing new code) or Render moving the service to a
+new host wipes it** — all assignments, teams/students, and drafts. Export
+to CSV from the instructor dashboard regularly, and especially right
+before you'd otherwise redeploy or right after an assignment closes, since
+there's no way to recover deleted data.
+
+The free plan also spins down after ~15 minutes idle and takes ~30s to
 wake up on the next request — fine for a classroom tool, just expect a
 slow first load if nobody's used it in a while.
