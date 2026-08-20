@@ -1,35 +1,29 @@
 import os
-import sqlite3
 import json
-from pathlib import Path
 from contextlib import contextmanager
 
-# DATA_DIR lets production hosting point this at a persistent disk mounted
-# outside the code directory (e.g. Render's disk mounts would otherwise hide
-# backend/app/* if pointed at backend/ itself). Defaults to alongside the
-# code for local dev.
-_DATA_DIR = os.environ.get("DATA_DIR")
-DB_PATH = Path(_DATA_DIR) / "data.db" if _DATA_DIR else Path(__file__).resolve().parent.parent / "data.db"
+import psycopg2
+import psycopg2.extras
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     code TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (now()::text),
     max_attempts INTEGER NOT NULL DEFAULT 3
 );
 
 CREATE TABLE IF NOT EXISTS students (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     session_id INTEGER NOT NULL REFERENCES sessions(id),
     name TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (now()::text),
     UNIQUE(session_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS attempts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     student_id INTEGER NOT NULL REFERENCES students(id),
     attempt_number INTEGER NOT NULL,
     draft_text TEXT NOT NULL,
@@ -37,7 +31,7 @@ CREATE TABLE IF NOT EXISTS attempts (
     criteria_result TEXT NOT NULL,
     persona_reactions TEXT NOT NULL,
     is_final INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (now()::text),
     UNIQUE(student_id, attempt_number)
 );
 """
@@ -45,18 +39,46 @@ CREATE TABLE IF NOT EXISTS attempts (
 
 def init_db():
     with get_conn() as conn:
-        conn.executescript(SCHEMA)
+        conn.execute(SCHEMA)
+
+
+class _CursorWrapper:
+    """Makes a psycopg2 cursor behave like the sqlite3 `conn.execute(...)`
+    pattern the routes are written against: '?' placeholders, chained
+    .fetchone()/.fetchall(), and a `.lastrowid` populated via RETURNING id."""
+
+    def __init__(self, cur):
+        self._cur = cur
+        self.lastrowid = None
+
+    def execute(self, sql, params=()):
+        pg_sql = sql.replace("?", "%s")
+        self._cur.execute(pg_sql, params)
+        if "returning" in sql.lower():
+            row = self._cur.fetchone()
+            self.lastrowid = row["id"] if row else None
+        return self
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
 
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
+    wrapper = _CursorWrapper(cur)
     try:
-        yield conn
+        yield wrapper
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
+        cur.close()
         conn.close()
 
 

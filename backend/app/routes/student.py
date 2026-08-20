@@ -47,7 +47,7 @@ def join(req: JoinRequest):
             student = db.row_to_dict(student)
         else:
             cur = conn.execute(
-                "INSERT INTO students (session_id, name) VALUES (?, ?)", (session["id"], student_name)
+                "INSERT INTO students (session_id, name) VALUES (?, ?) RETURNING id", (session["id"], student_name)
             )
             student = {"id": cur.lastrowid, "session_id": session["id"], "name": student_name}
 

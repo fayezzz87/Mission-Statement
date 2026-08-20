@@ -6,7 +6,9 @@ department personas (CFO, COO, Legal/Compliance, HR/Culture) plus a neutral
 criteria evaluator, iterating over a few attempts before finalizing.
 
 The Anthropic API key lives only in `backend/.env` and is never sent to the
-browser.
+browser. Data is stored in Postgres (a free [Neon](https://neon.tech)
+database in production), not a local file, so it survives restarts and
+redeploys without needing a paid persistent disk.
 
 ## Setup
 
@@ -15,7 +17,14 @@ python -m venv venv
 venv\Scripts\pip install -r backend\requirements.txt
 ```
 
-`backend/.env` already contains `ANTHROPIC_API_KEY=...` (git-ignored).
+`backend/.env` needs two values (git-ignored):
+```
+ANTHROPIC_API_KEY=sk-ant-...
+DATABASE_URL=postgresql://user:password@host/dbname
+```
+`DATABASE_URL` is the connection string from your Neon project dashboard.
+Local dev and production point at the same Neon database unless you create
+a separate Neon project for local testing.
 
 ## Run
 
@@ -23,9 +32,8 @@ venv\Scripts\pip install -r backend\requirements.txt
 venv\Scripts\python -m uvicorn app.main:app --app-dir backend --reload --reload-dir backend/app --port 8000
 ```
 
-(`--reload-dir backend/app` scopes the auto-reload watcher to source code only —
-without it, uvicorn watches the whole project including `backend/data.db`, so
-every database write during use would trigger a server restart.)
+(`--reload-dir backend/app` scopes the auto-reload watcher to source code
+only, so editing files doesn't trigger spurious restarts.)
 
 Open **http://localhost:8000**.
 
@@ -47,6 +55,10 @@ Open **http://localhost:8000**.
   reactions) and one neutral rubric-checking evaluator (structured pass/needs
   -work + one sentence per characteristic, via forced tool use). Word count is
   computed in Python, not trusted to the model.
+- `backend/app/db.py` — a thin wrapper so route code can call
+  `conn.execute("... ? ...", params)` the same way whether the driver
+  underneath is sqlite-style or (as of the Neon migration) psycopg2; it
+  translates `?` → `%s` and captures `RETURNING id` into `.lastrowid`.
 - `backend/app/routes/student.py` — join, state, submit attempt (auto-
   finalizes on the last allowed attempt), finalize early, one-page summary.
 - `backend/app/routes/instructor.py` — session create/dashboard (including
@@ -60,22 +72,30 @@ Open **http://localhost:8000**.
 
 ## Deploying to Render
 
-`render.yaml` in the project root defines the service: a Starter-plan
-Python web service (~$7/mo) plus a small persistent disk (mounted at
-`/var/data`, via the `DATA_DIR` env var) so student submissions survive
-restarts and redeploys.
+`render.yaml` defines a **free** Python web service — no persistent disk
+needed since data lives in Neon Postgres instead.
 
-1. Push this repo to GitHub.
-2. In Render: **New +** → **Blueprint** → select the repo. Render reads
+1. Create a free Neon project at [neon.tech](https://neon.tech) (no credit
+   card) and copy its connection string.
+2. Push this repo to GitHub.
+3. In Render: **New +** → **Blueprint** → select the repo. Render reads
    `render.yaml` automatically.
-3. When prompted, paste your Anthropic API key as the `ANTHROPIC_API_KEY`
-   env var (from `backend/.env` — never commit that file), and confirm the
-   Starter plan + disk (this is a paid change — Render will ask you to
-   confirm billing yourself).
-4. Deploy. Render gives you a stable `https://*.onrender.com` URL.
+4. When prompted, paste `ANTHROPIC_API_KEY` and `DATABASE_URL` (the Neon
+   connection string) as env vars directly in Render's dashboard — never
+   commit either value.
+5. Deploy. Render gives you a stable `https://*.onrender.com` URL.
 
-**Note on the free plan (not used here anymore):** an earlier version of
-this deploy ran on Render's free plan, which doesn't support persistent
-disks. In practice, a restart wiped the database sooner than expected —
-even ordinary idle spin-down/wake was enough to lose all data, not just
-explicit redeploys. That's why this now runs on Starter with a disk.
+Notes:
+- The free web service plan spins down after ~15 minutes idle and takes
+  ~30s to wake on the next request — fine for a classroom tool, just expect
+  a slow first load if nobody's used it in a while. Because data now lives
+  in Neon rather than on the web service's own filesystem, this spin-down
+  no longer risks losing data.
+- Neon's free tier: 0.5GB storage, 100 compute-hours/month, database
+  compute scales to zero after 5 minutes idle (it wakes automatically on
+  the next query, adding a brief delay). Plenty for a single-assignment
+  classroom tool.
+- History: this originally ran on Render's free plan with SQLite on the
+  local filesystem, which turned out to get wiped on ordinary spin-down/
+  wake, not just explicit redeploys. Then briefly considered a paid Render
+  disk (Starter plan) before settling on the free Neon route instead.

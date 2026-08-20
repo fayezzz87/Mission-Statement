@@ -3,3 +3,4 @@ uvicorn[standard]
 anthropic
 python-dotenv
 pydantic
+psycopg2-binary

@@ -30,7 +30,7 @@ def create_session(req: CreateSessionRequest):
             raise HTTPException(500, "Could not generate a unique session code")
 
         cur = conn.execute(
-            "INSERT INTO sessions (name, code, max_attempts) VALUES (?, ?, ?)",
+            "INSERT INTO sessions (name, code, max_attempts) VALUES (?, ?, ?) RETURNING id",
             (req.name, code, req.max_attempts),
         )
         session_id = cur.lastrowid

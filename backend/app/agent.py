@@ -131,7 +131,7 @@ async def _persona_reaction(persona_key, draft_text):
     persona = PERSONAS[persona_key]
     response = await client().messages.create(
         model=MODEL,
-        max_tokens=300,
+        max_tokens=500,
         system=persona["system"],
         messages=[{"role": "user", "content": f'Draft mission statement:\n"{draft_text}"'}],
     )

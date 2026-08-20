@@ -16,6 +16,10 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
     raise RuntimeError(
         "ANTHROPIC_API_KEY is not set. Put it in backend/.env (see backend/.env.example)."
     )
+if not os.environ.get("DATABASE_URL"):
+    raise RuntimeError(
+        "DATABASE_URL is not set. Put it in backend/.env (see backend/.env.example)."
+    )
 
 db.init_db()
 
